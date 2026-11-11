@@ -116,15 +116,22 @@ function renderChat() {
   if(atBottom) box.scrollTop=box.scrollHeight;
   $('chat-preview-text').textContent=state.messages.at(-1)?.text||'有什么想吃的？告诉饭搭子。';
   $('chat-count').textContent=state.messages.length||'';
-  $('home-message-count').textContent=String(state.messages.length).padStart(2,'0');
-  const recent=state.messages.slice(-6);
-  const signature=JSON.stringify(recent.map(m=>[m.id,m.name,m.text]));
-  if(signature!==lastBubbleSignature){
-    const previous=lastBubbleSignature;lastBubbleSignature=signature;
-    const slots=[[0,9,0],[61,2,54],[8,40,4],[58,48,52],[1,73,0],[62,79,53]];
-    $('home-bubbles').innerHTML=recent.length?recent.map((m,i)=>{const [x,y,mx]=slots[i];return `<button class="orbit-message ${m.user===state.user.id?'own':''} ${previous&&i===recent.length-1?'new':''}" data-go="chat" style="--x:${x}%;--y:${y}%;--mobile-x:${mx}%;--duration:${7+i*.7}s" title="${escapeHTML(m.name+': '+m.text)}" aria-label="查看匿名消息：${escapeHTML(m.text)}">${avatarHTML(m.avatar,m.name,'xs')}<small>${escapeHTML(m.name)}</small><p>${escapeHTML(m.text)}</p></button>`;}).join(''):'<div class="channel-empty">这里还没有信号。<br>发句话，让它飘起来。<small>CHANNEL OPEN / ANONYMOUS</small></div>';
-  }
+  renderHomeBubbles();
 }
+const BUBBLE_TTL=15*60*1000;
+function liveMessages(now=Date.now()){ return state.messages.filter(m=>now-new Date(m.time).getTime()<BUBBLE_TTL); }
+function renderHomeBubbles(){
+  const live=liveMessages();
+  $('home-message-count').textContent=String(live.length).padStart(2,'0');
+  const recent=live.slice(-6);
+  const signature=JSON.stringify(recent.map(m=>[m.id,m.name,m.text]));
+  if(signature===lastBubbleSignature)return;
+  const previous=lastBubbleSignature;lastBubbleSignature=signature;
+  const slots=[[0,9,0],[61,2,54],[8,40,4],[58,48,52],[1,73,0],[62,79,53]];
+  $('home-bubbles').innerHTML=recent.length?recent.map((m,i)=>{const [x,y,mx]=slots[i];return `<button class="orbit-message ${m.user===state.user.id?'own':''} ${previous&&i===recent.length-1?'new':''}" data-go="chat" style="--x:${x}%;--y:${y}%;--mobile-x:${mx}%;--duration:${7+i*.7}s" title="${escapeHTML(m.name+': '+m.text)}" aria-label="查看匿名消息：${escapeHTML(m.text)}">${avatarHTML(m.avatar,m.name,'xs')}<small>${escapeHTML(m.name)}</small><p>${escapeHTML(m.text)}</p></button>`;}).join(''):'<div class="channel-empty">最近 15 分钟还没有信号。<br>发句话，让它飘起来。<small>MESSAGES FADE IN 15 MIN</small></div>';
+}
+setInterval(()=>{if(!document.hidden)renderHomeBubbles();},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)renderHomeBubbles();});
 function render() {
   $('profile-name').innerHTML=`${escapeHTML(state.user.name)}<small>点击修改昵称与头像</small>`;
   const avatar=state.user.avatar||state.user.name, profileAvatar=$('profile-avatar');
