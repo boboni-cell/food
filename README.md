@@ -40,6 +40,16 @@ Kakao 官方文档：[Local API](https://developers.kakao.com/docs/latest/ko/loc
 
 照片在浏览器压缩至最长边1280px的 JPEG 后保存到数据库，允许原始 JPG/PNG/WebP，不接收 SVG。记录和聊天不会因刷新或重启丢失。统计的“消费合计”是每条个人记录的人均金额之和，不是整桌账单金额；多人同日评价分别计入，覆盖天数去重。
 
+## 部署（Railway）
+
+项目依赖长期运行的 Node 进程、SQLite 文件和 SSE 长连接，**不能直接部署到 Cloudflare Workers/Pages 或 Vercel 这类静态/边缘托管**（需要改用 D1 + Durable Objects 重写）。推荐 Railway：
+
+1. Railway → New Project → Deploy from GitHub repo `boboni-cell/food`，分支 `main`。
+2. Variables 里配置 `KAKAO_REST_KEY`、`KAKAO_JS_KEY`（**不要提交 `.env`**）；`PORT` 由 Railway 注入，`HOST` 默认 `0.0.0.0`。
+3. 给服务挂载 **Volume 到 `/app/data`**。不挂载时容器文件系统是临时的，重新部署会丢失餐厅、日记和聊天记录。
+4. Settings → Networking → Generate Domain，然后把该域名加入 Kakao 开发者后台的 **Web 平台域名**（JS SDK 用），否则地图不显示。
+5. 健康检查路径 `/`；`railway.json` 已固定 Node 版本与启动命令。
+
 ## 后端与部署
 
 - `server.js`：静态网页、REST API、匿名会话、Kakao 后端代理和 SSE。
