@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>今天吃什么? - 江南拼饭助手</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 引入 Kakao Map SDK（必须带上 libraries=services 才能搜周边餐厅） -->
+  <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_JAVASCRIPT_KEY"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 pb-20">
+
+  <!-- 顶部标题栏 -->
+  <header class="bg-white shadow-sm sticky top-0 z-10 px-4 py-3 flex justify-between items-center">
+    <div>
+      <h1 class="text-lg font-bold text-gray-900">🍱 今天吃什么？</h1>
+      <p class="text-xs text-gray-500">点击地图可切换聚餐中心点</p>
+    </div>
+    <span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full font-medium">KRW ₩</span>
+  </header>
+
+  <main class="max-w-md mx-auto p-4 space-y-4">
+    
+    <!-- 1. 地图区域 -->
+    <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
+      <div id="map" class="w-full h-64"></div>
+      <div class="p-3 bg-gray-50 text-xs text-gray-600 flex justify-between items-center">
+        <span id="current-pos-text">📍 默认：서초구 강남대로89길 19</span>
+        <span id="restaurant-count" class="font-semibold text-blue-600">搜索中...</span>
+      </div>
+    </div>
+
+    <!-- 2. 筛选条件 -->
+    <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
+      <div>
+        <label class="text-xs font-semibold text-gray-500 block mb-1.5">饮食偏好 (照顾素食同事)</label>
+        <div class="grid grid-cols-3 gap-2">
+          <button onclick="setFilter('diet', 'ALL')" class="diet-btn bg-blue-600 text-white py-1.5 rounded-lg text-xs font-medium">全部/不忌口</button>
+          <button onclick="setFilter('diet', 'VEG')" class="diet-btn bg-gray-100 text-gray-700 py-1.5 rounded-lg text-xs font-medium">🥗 素食/沙拉</button>
+          <button onclick="setFilter('diet', 'MEAT')" class="diet-btn bg-gray-100 text-gray-700 py-1.5 rounded-lg text-xs font-medium">🥩 偏爱肉食</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold text-gray-500 block mb-1.5">搜索半径</label>
+        <select id="radius-select" onchange="searchNearby()" class="w-full bg-gray-100 text-sm rounded-lg p-2 outline-none">
+          <option value="300">步行 5 分钟内 (300m)</option>
+          <option value="500" selected>步行 8 分钟内 (500m)</option>
+          <option value="1000">1 公里内 (1000m)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 3. 随机抽取大按钮 -->
+    <button onclick="pickRandom()" class="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold py-3.5 rounded-2xl shadow-md active:scale-95 transition transform text-base">
+      🎲 随机决定今天吃这家！
+    </button>
+
+    <!-- 4. 抽中结果展示卡片 -->
+    <div id="result-card" class="hidden bg-white rounded-2xl p-4 shadow-md border-2 border-orange-400 space-y-2">
+      <div class="flex justify-between items-start">
+        <span class="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-bold">🎉 今日天选</span>
+        <span id="res-distance" class="text-xs text-gray-500"></span>
+      </div>
+      <h2 id="res-name" class="text-xl font-bold text-gray-900"></h2>
+      <p id="res-category" class="text-xs text-gray-500"></p>
+      <p id="res-address" class="text-sm text-gray-700"></p>
+      <div class="pt-2 flex gap-2">
+        <a id="res-link" href="#" target="_blank" class="flex-1 text-center bg-yellow-400 text-gray-900 font-semibold py-2 rounded-xl text-sm">
+          在 KakaoMap 查看评分/菜单
+        </a>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // 默认公司坐标：서울특별시 서초구 강남대로89길 19
+    let currentLat = 37.508492;
+    let currentLng = 127.023015;
+    let map, centerMarker, ps;
+    let restaurantList = [];
+    let currentDietFilter = 'ALL';
+
+    // 初始化地图
+    window.onload = function() {
+      const container = document.getElementById('map');
+      const options = {
+        center: new kakao.maps.LatLng(currentLat, currentLng),
+        level: 4 // 缩放级别
+      };
+      map = new kakao.maps.Map(container, options);
+      ps = new kakao.maps.services.Places();
+
+      // 中心点标记
+      centerMarker = new kakao.maps.Marker({
+        position: new kakao.maps.LatLng(currentLat, currentLng),
+        map: map
+      });
+
+      // 点击地图切换位置
+      kakao.maps.Event.addListener(map, 'click', function(mouseEvent) {
+        const latlng = mouseEvent.latLng;
+        currentLat = latlng.getLat();
+        currentLng = latlng.getLng();
+        centerMarker.setPosition(latlng);
+        document.getElementById('current-pos-text').innerText = `📍 已选新位置 (${currentLat.toFixed(4)}, ${currentLng.toFixed(4)})`;
+        searchNearby();
+      });
+
+      // 初次加载周边餐厅
+      searchNearby();
+    };
+
+    // 搜索周边餐厅 (FD6 = 餐饮店)
+    function searchNearby() {
+      const radius = parseInt(document.getElementById('radius-select').value);
+      const searchOptions = {
+        location: new kakao.maps.LatLng(currentLat, currentLng),
+        radius: radius,
+        sort: kakao.maps.services.SortBy.DISTANCE
+      };
+
+      // 如果是素食偏好，用关键词搜 샐러드/비건/채식，否则用 FD6 搜全部餐饮
+      if (currentDietFilter === 'VEG') {
+        ps.keywordSearch('샐러드 비건', placesCallback, searchOptions);
+      } else {
+        ps.categorySearch('FD6', placesCallback, searchOptions);
+      }
+    }
+
+    function placesCallback(data, status) {
+      if (status === kakao.maps.services.Status.OK) {
+        restaurantList = data;
+        document.getElementById('restaurant-count').innerText = `找到 ${data.length} 家餐厅`;
+      } else {
+        restaurantList = [];
+        document.getElementById('restaurant-count').innerText = `附近暂无匹配餐厅`;
+      }
+    }
+
+    // 切换饮食筛选
+    function setFilter(type, value) {
+      currentDietFilter = value;
+      document.querySelectorAll('.diet-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white');
+        btn.classList.add('bg-gray-100', 'text-gray-700');
+      });
+      event.target.classList.remove('bg-gray-100', 'text-gray-700');
+      event.target.classList.add('bg-blue-600', 'text-white');
+      searchNearby();
+    }
+
+    // 随机抽取
+    function pickRandom() {
+      if (restaurantList.length === 0) {
+        alert('当前范围内没有找到餐厅，请放大搜索半径或更换位置！');
+        return;
+      }
+      const randomIndex = Math.floor(Math.random() * restaurantList.length);
+      const picked = restaurantList[randomIndex];
+
+      // 展示结果
+      document.getElementById('result-card').classList.remove('hidden');
+      document.getElementById('res-name').innerText = picked.place_name;
+      document.getElementById('res-category').innerText = picked.category_name;
+      document.getElementById('res-address').innerText = picked.road_address_name || picked.address_name;
+      document.getElementById('res-distance').innerText = `距离约 ${picked.distance}m`;
+      document.getElementById('res-link').href = picked.place_url;
+
+      // 地图视角移动到抽中的餐厅
+      const moveLatLon = new kakao.maps.LatLng(picked.y, picked.x);
+      map.panTo(moveLatLon);
+    }
+  </script>
+</body>
+</html>
