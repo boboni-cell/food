@@ -49,6 +49,8 @@ Kakao 官方文档：[Local API](https://developers.kakao.com/docs/latest/ko/loc
 3. 给服务挂载 **Volume 到 `/app/data`**。不挂载时容器文件系统是临时的，重新部署会丢失餐厅、日记和聊天记录。
 4. Settings → Networking → Generate Domain，然后把该域名加入 Kakao 开发者后台的 **Web 平台域名**（JS SDK 用），否则地图不显示。
 5. 健康检查路径 `/`；`railway.json` 已固定 Node 版本与启动命令。
+6. 自动部署走 GitHub Actions（`.github/workflows/deploy.yml`）：先跑 `npm test`，再用 `railway up` 发布。仓库 secret 需配置 `RAILWAY_TOKEN`（Railway 项目 Settings → Tokens 生成）。
+7. 自定义域名在 Railway → Settings → Networking 添加后，Cloudflare 里配置 CNAME（**DNS only / 灰云**）和 `_railway-verify` TXT；证书由 Railway 自动签发。Kakao 后台的 JavaScript SDK 域名也要加上该域名。
 
 ## 后端与部署
 
@@ -63,10 +65,4 @@ npm test
 
 要让同事从手机访问，可以在同一 Wi-Fi 下用此电脑的局域网 IP 和端口3000访问；定位权限通常要求 HTTPS 或 localhost。公网使用需部署到支持 **长期 Node.js 进程 + 持久磁盘** 的服务，设置 HTTPS，反向代理禁用 `/api/events` 缓冲，并允许长连接。SQLite 和 SSE 的当前版本面向单实例的小团队，不适合无持久磁盘的静态托管或多实例部署。
 
-这是“持有邀请链接即可访问”的匿名团队空间，链接等同访问权限，请仅分享给同事。当前完成本地可运行版本，尚未部署公网域名。
-
-<!-- deploy check 20261112T023904Z -->
-
-<!-- deploy check 20261112T024149Z -->
-
-<!-- auto deploy verify 20261112T034516Z -->
+这是“持有邀请链接即可访问”的匿名团队空间，链接等同访问权限，请仅分享给同事。已部署到 https://food.hanyue-room.design，推送到 `main` 由 GitHub Actions 自动部署。
