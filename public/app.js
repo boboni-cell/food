@@ -18,7 +18,8 @@ localStorage.setItem('lunch-room',room);
 const apiURL = route => `/api/${route}?room=${encodeURIComponent(room)}`;
 async function kakaoSearch(kind, params) { const res=await fetch(apiURL('search')+'&'+new URLSearchParams({kind,...params})); const result=await res.json();if(!res.ok)throw new Error(result.error||'搜索失败');return result; }
 let state = { places:[],reviews:[],messages:[],user:{},pick:null,location:null };
-let diet = 'all', map, centerMarker, markers = [], searching = false, searchVersion = 0, mapLoading = false, refreshPending = null, refreshAgain = false;
+let diet = 'all', map, centerMarker, searching = false, searchVersion = 0, mapLoading = false, refreshPending = null, refreshAgain = false;
+const markerIndex = new Map();
 let currentLocation = {lat:37.508492,lng:127.023015,label:'서울특별시 서초구 강남대로89길 19'};
 let activeView = 'discover', editorHandler, toastTimer;
 let dietHints=new Set();
@@ -80,6 +81,22 @@ function renderPlaces() {
   }).join('') : `<div class="empty">${searching?'正在搜索，请稍候…':nearby.length?'附近有餐厅，但缺少符合当前筛选的已确认资料':'当前范围暂未找到餐厅'}<p>${nearby.length?'可在下方补充餐厅资料，或调整预算、饮食偏好；不会把未确认的餐厅当成素食推荐。':'试试扩大到 1km / 2km，或搜索其他聚餐地点。'}</p><button class="button small" data-add>＋ 添加熟悉的餐厅</button></div>`;
   $('location-label').textContent=currentLocation.label;
   document.querySelector('.planet-coordinate').textContent=`${currentLocation.lat.toFixed(4)}° N / ${currentLocation.lng.toFixed(4)}° E`;
+  syncMarkers();
+}
+function syncMarkers() {
+  if(!map||!window.kakao?.maps)return;
+  const wanted=new Map(state.places.filter(p=>distance(p)<=Number($('radius').value)).map(p=>[p.id,p]));
+  for(const [id,entry] of markerIndex){
+    if(wanted.has(id))continue;
+    entry.marker.setMap(null);markerIndex.delete(id);
+  }
+  for(const [id,p] of wanted){
+    const entry=markerIndex.get(id), point=new kakao.maps.LatLng(p.lat,p.lng);
+    if(entry){entry.marker.setPosition(point);continue;}
+    const marker=new kakao.maps.Marker({position:point,map,title:p.name});
+    kakao.maps.event.addListener(marker,'click',()=>editPlace(id));
+    markerIndex.set(id,{marker});
+  }
 }
 function renderPick() {
   const p=state.pick;
@@ -254,8 +271,6 @@ async function searchNearby() {
     for(let i=0;i<discovered.length;i+=8){if(version!==searchVersion)return;await Promise.all(discovered.slice(i,i+8).map(p=>api('place',{discovery:true,id:p.id,name:p.place_name,category:p.category_name,address:p.road_address_name||p.address_name||p.place_name,lat:Number(p.y),lng:Number(p.x),price:null,diet:'unknown'})));}
     if(version!==searchVersion)return;
     await refresh();
-    markers.forEach(m=>m.setMap(null));markers=[];
-    if(map)for(const p of discovered) { const marker=new kakao.maps.Marker({position:new kakao.maps.LatLng(p.y,p.x),map,title:p.place_name});kakao.maps.event.addListener(marker,'click',()=>editPlace(p.id));markers.push(marker); }
     $('search-note').textContent=`Kakao 本次返回 ${discovered.length} 家附近餐厅${diet==='veg'?'（包含素食关键词线索）':'（距离搜索最多45家）'}。点击餐厅补充人均与饮食类型；距离为直线距离。`;
   } catch(e){if(version===searchVersion){$('search-note').textContent=e.message;toast(e.message);}}
   finally {if(version===searchVersion){searching=false;renderPlaces();}}
